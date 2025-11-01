@@ -1,31 +1,25 @@
-import OpenAI from "openai";
 import dotenv from "dotenv";
-
-console.log("API key loaded:", process.env.OPENAI_API_KEY ? "✅ yes" : "❌ no");
-
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true,
-})
+const apiKey = process.env.GEMINI_API_KEY;
 
-const messages = [
-    { 
-        role: "system", 
-        content: "You are a helpful general knowledge expert." 
-    },
+console.log("GEMINI_API_KEY loaded:", apiKey ? "✅ yes" : "❌ no");
 
-    { 
-        role: "user", 
-        content: "Who invented AI?" 
-    }
-];
+// Ensure key exists before proceeding
+if (!apiKey) {
+  console.error("❌ No Gemini API key found. Please check your .env file.");
+  process.exit(1);
+}
 
-const response = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: messages,
-});
-    
-console.log(response);  
+const genAI = new GoogleGenerativeAI(apiKey);
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+async function main() {
+  const prompt = "Who invented AI?";
+  const result = await model.generateContent(prompt);
+  console.log("AI Response:", result.response.text());
+}
+
+main().catch(console.error);
