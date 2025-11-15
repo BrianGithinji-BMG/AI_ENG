@@ -1,34 +1,9 @@
-// ✅ Load API Keys
-const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+// Load API key
 const polygonKey = import.meta.env.VITE_POLYGON_API_KEY;
 
-console.log("✅ OpenAI Key loaded:", openaiKey ? "YES" : "NO");
-console.log("✅ Polygon Key loaded:", polygonKey ? "YES" : "NO");
+console.log("Polygon Key loaded:", polygonKey ? "YES" : "NO");
 
-// ✅ Key check
-if (!openaiKey || !polygonKey) {
-  document.body.innerHTML = `
-    <div style="
-      background: #ff4b4b;
-      color: white;
-      font-weight: bold;
-      padding: 20px;
-      text-align: center;
-      border-radius: 12px;
-      margin: 30px;
-      font-size: 18px;
-    ">
-      ⚠️ Missing API key(s)!<br>
-      Please ensure your .env file includes:<br><br>
-      <code>VITE_OPENAI_API_KEY=your_openai_key</code><br>
-      <code>VITE_POLYGON_API_KEY=your_polygon_key</code><br><br>
-      Then restart with <b>npm run dev</b>.
-    </div>
-  `;
-  throw new Error("Missing one or more API keys.");
-}
-
-// ✅ Select DOM elements
+// DOM elements
 const form = document.getElementById("ticker-input-form");
 const tickerInput = document.getElementById("ticker-input");
 const tickerDisplay = document.querySelector(".ticker-choice-display");
@@ -40,17 +15,12 @@ const actionPanel = document.querySelector(".action-panel");
 
 let tickersArr = [];
 
-// ✅ Add stock ticker
+// Add ticker
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const value = tickerInput.value.trim().toUpperCase();
 
-  if (value.length < 2) {
-    const label = document.getElementsByTagName("label")[0];
-    label.style.color = "red";
-    label.textContent = "Enter a valid stock ticker (e.g. TSLA)";
-    return;
-  }
+  if (!value) return;
 
   if (!tickersArr.includes(value)) {
     tickersArr.push(value);
@@ -61,7 +31,7 @@ form.addEventListener("submit", (e) => {
   generateReportBtn.disabled = false;
 });
 
-// ✅ Render tickers
+// Render tickers
 function renderTickers() {
   tickerDisplay.innerHTML = "";
   tickersArr.forEach((ticker) => {
@@ -72,7 +42,7 @@ function renderTickers() {
   });
 }
 
-// ✅ Generate report
+// When user clicks "Generate Report"
 generateReportBtn.addEventListener("click", async () => {
   if (!tickersArr.length) return;
 
@@ -82,15 +52,18 @@ generateReportBtn.addEventListener("click", async () => {
 
   try {
     const stockData = await getRealStockData(tickersArr);
+
     apiMessage.innerText = "Analyzing stock trends...";
+
     await fetchReport(stockData);
-  } catch (error) {
-    console.error("Error fetching stock data:", error);
-    loadingPanel.innerText = "Error fetching stock data. Try again later.";
+  } catch (err) {
+    console.error(err);
+    apiMessage.innerText = "Error fetching stock data.";
+    loadingPanel.style.display = "none";
   }
 });
 
-// ✅ Get Real Stock Data (Polygon.io)
+// Fetch real stock data
 async function getRealStockData(tickers) {
   const results = [];
 
@@ -100,7 +73,7 @@ async function getRealStockData(tickers) {
         `https://api.polygon.io/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${polygonKey}`
       );
 
-      if (!response.ok) throw new Error(`Polygon error: ${response.statusText}`);
+      if (!response.ok) throw new Error("Polygon API error");
 
       const data = await response.json();
       const stock = data.results?.[0];
@@ -119,70 +92,44 @@ async function getRealStockData(tickers) {
           percentChange,
         });
       } else {
-        results.push({
-          ticker,
-          error: "No data available",
-        });
+        results.push({ ticker, error: "No data available" });
       }
-    } catch (error) {
-      console.warn(`Failed to fetch ${ticker}:`, error);
-      results.push({
-        ticker,
-        error: "Fetch failed",
-      });
+    } catch (err) {
+      results.push({ ticker, error: "Fetch failed" });
     }
   }
 
   return results;
 }
 
-// ✅ Fetch AI report using OpenAI API
+// Call the worker with stockData
 async function fetchReport(stockData) {
+  const url = "https://openai-api-worker.briangithinji564.workers.dev/";
+
   try {
-    const prompt = `
-      You are a financial analyst. Based on the real stock data below, 
-      provide a short analysis for each stock and conclude with a clear 
-      recommendation (BUY, HOLD, or SELL).
-
-      ${JSON.stringify(stockData, null, 2)}
-    `;
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert stock analyst providing clear, concise insights for investors.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stockData }),
     });
 
-    if (!response.ok) throw new Error(`OpenAI error: ${response.statusText}`);
+    if (!res.ok) {
+      throw new Error(`Worker error ${res.status}`);
+    }
 
-    const data = await response.json();
-    const output =
-      data.choices?.[0]?.message?.content?.trim() ||
-      "No response generated by AI.";
+    const data = await res.json();
 
-    renderReport(output);
-  } catch (error) {
-    console.error("Error generating AI report:", error);
-    loadingPanel.innerText =
-      "Error generating AI report. Please check your OpenAI key or try again later.";
+    if (data.error) throw new Error(data.error);
+
+    renderReport(data.report);
+  } catch (err) {
+    apiMessage.innerText = "AI processing failed: " + err.message;
+    loadingPanel.style.display = "none";
+    actionPanel.style.display = "block";
   }
 }
 
-// ✅ Render AI output
+// Display the report
 function renderReport(output) {
   loadingPanel.style.display = "none";
   outputPanel.style.display = "block";
