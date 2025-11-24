@@ -22,19 +22,16 @@ form.addEventListener("submit", (e) => {
 
   if (!value) return;
 
-  if (!tickersArr.includes(value)) {
-    tickersArr.push(value);
-    renderTickers();
-  }
-
+  if (!tickersArr.includes(value)) tickersArr.push(value);
   tickerInput.value = "";
   generateReportBtn.disabled = false;
+  renderTickers();
 });
 
 // Render tickers
 function renderTickers() {
   tickerDisplay.innerHTML = "";
-  tickersArr.forEach((ticker) => {
+  tickersArr.forEach(ticker => {
     const span = document.createElement("span");
     span.textContent = ticker;
     span.classList.add("ticker");
@@ -42,7 +39,7 @@ function renderTickers() {
   });
 }
 
-// When user clicks "Generate Report"
+// Generate report click
 generateReportBtn.addEventListener("click", async () => {
   if (!tickersArr.length) return;
 
@@ -52,86 +49,68 @@ generateReportBtn.addEventListener("click", async () => {
 
   try {
     const stockData = await getRealStockData(tickersArr);
-
     apiMessage.innerText = "Analyzing stock trends...";
-
     await fetchReport(stockData);
   } catch (err) {
-    console.error(err);
-    apiMessage.innerText = "Error fetching stock data.";
+    console.error("Error:", err);
+    apiMessage.innerText = "Error: " + err.message;
     loadingPanel.style.display = "none";
+    actionPanel.style.display = "block";
   }
 });
 
-// Fetch real stock data
+// Fetch real stock data from Polygon
 async function getRealStockData(tickers) {
   const results = [];
 
   for (const ticker of tickers) {
     try {
-      const response = await fetch(
-        `https://api.polygon.io/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${polygonKey}`
-      );
-
-      if (!response.ok) throw new Error("Polygon API error");
-
-      const data = await response.json();
+      const url = `https://api.polygon.io/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${polygonKey}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Polygon API error: ${res.status}`);
+      const data = await res.json();
       const stock = data.results?.[0];
-
       if (stock) {
-        const open = stock.o;
-        const close = stock.c;
+        const open = stock.o, close = stock.c;
         const change = (close - open).toFixed(2);
         const percentChange = ((change / open) * 100).toFixed(2);
-
-        results.push({
-          ticker,
-          open,
-          close,
-          change,
-          percentChange,
-        });
-      } else {
-        results.push({ ticker, error: "No data available" });
-      }
+        results.push({ ticker, open, close, change, percentChange });
+      } else results.push({ ticker, error: "No data available" });
     } catch (err) {
-      results.push({ ticker, error: "Fetch failed" });
+      results.push({ ticker, error: err.message });
     }
   }
 
   return results;
 }
 
-// Call the worker with stockData
+// Call Worker (Gemini)
 async function fetchReport(stockData) {
-  const url = "https://openai-api-worker.briangithinji564.workers.dev/";
-
   try {
-    const res = await fetch(url, {
+    const res = await fetch("https://stock-api-worker.briangithinji564.workers.dev/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stockData }),
+      body: JSON.stringify({ stockData })
     });
-
-    if (!res.ok) {
-      throw new Error(`Worker error ${res.status}`);
-    }
 
     const data = await res.json();
 
-    if (data.error) throw new Error(data.error);
+    if (!res.ok || data.error) throw new Error(data.error || `Worker error ${res.status}`);
 
     renderReport(data.report);
   } catch (err) {
+    console.error("Gemini fetch error:", err);
     apiMessage.innerText = "AI processing failed: " + err.message;
     loadingPanel.style.display = "none";
     actionPanel.style.display = "block";
   }
 }
 
-// Display the report
+// Display report
 function renderReport(output) {
   loadingPanel.style.display = "none";
   outputPanel.style.display = "block";
   outputPanel.innerHTML = `<p>${output}</p>`;
 }
+
+console.log("Frontend script loaded successfully!");
